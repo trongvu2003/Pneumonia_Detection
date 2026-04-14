@@ -1,0 +1,12 @@
+Resize ảnh (224x224)
+
+CLAHE enhancement (tăng tương phản ảnh X-ray.làm rõ vùng phổi)
+
+Filter (Gaussian Blur (giảm nhiễu)
+        Median Filter (lọc nhiễu)
+        Canny Edge (phát hiện biên)
+        Sobel (gradient))
+
+Normalize
+
+Save lại ảnh đã xử lý vào data/processed
