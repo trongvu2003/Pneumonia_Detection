@@ -29,9 +29,7 @@ def create_directories():
     print(f"[OK] Created output directories in {PROCESSED_DATA_PATH}")
 
 def preprocess_single_image(image_path):
-    """
-    Chỉ thực hiện Tiền xử lý ảnh (Làm sạch và tăng cường)
-    """
+    # Chỉ thực hiện Tiền xử lý ảnh (Làm sạch và tăng cường)
     try:
         # 1. Đọc ảnh
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
@@ -56,7 +54,6 @@ def preprocess_single_image(image_path):
         return None
 
 def save_preprocessed_image(processed_image, output_path, filename):
-    """Save processed image as uint8"""
     output_path.mkdir(parents=True, exist_ok=True)
     output_file = output_path / filename
     
@@ -68,12 +65,8 @@ def save_preprocessed_image(processed_image, output_path, filename):
 
 def process_dataset():
     """Process all images in the dataset"""
-    print("=" * 60)
     print("PNEUMONIA DETECTION - PHASE 1: PREPROCESSING")
-    print("=" * 60)
-    
     create_directories()
-    
     total_files = 0
     total_processed = 0
     
