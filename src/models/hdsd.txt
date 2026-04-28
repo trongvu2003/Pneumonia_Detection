@@ -1,1 +1,0 @@
-build CNN model (có thể chọn và nghiên cứu các model khác)

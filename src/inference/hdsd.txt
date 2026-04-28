@@ -1,7 +1,0 @@
-load model
-nhận ảnh input
-chạy pipeline preprocess
-output:
-NORMAL
-PNEUMONIA
-confidence %
