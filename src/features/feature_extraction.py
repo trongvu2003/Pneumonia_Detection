@@ -2,9 +2,9 @@
 Pneumonia Detection - Feature Extraction Pipeline.
 
 Extract handcrafted features from preprocessed X-ray images:
-- HOG  : edge and shape cues
-- LBP  : local texture histogram
-- GLCM : statistical texture descriptors
+- HOG  : edge and shape cues          (Chương 3)
+- LBP  : local texture histogram      (Chương 3)
+- GLCM : statistical texture descriptors (Chương 4)
 
 Outputs are stored in ``data/features``:
 - X_train.npy, y_train.npy
@@ -46,6 +46,9 @@ IMAGE_EXTENSIONS = ("*.jpeg", "*.jpg", "*.png")
 LBP_POINTS = 8
 LBP_RADIUS = 1
 
+#  Số mức lượng tử cho GLCM (giảm từ 256 → 64, nhanh hơn ~16x)
+GLCM_LEVELS = 64
+
 
 def create_feature_directory():
     FEATURE_PATH.mkdir(parents=True, exist_ok=True)
@@ -53,7 +56,7 @@ def create_feature_directory():
 
 
 def extract_hog(image):
-    """Extract Histogram of Oriented Gradients features."""
+    """Extract Histogram of Oriented Gradients features. (Chương 3)"""
     features = hog(
         image,
         orientations=9,
@@ -66,7 +69,7 @@ def extract_hog(image):
 
 
 def extract_lbp(image):
-    """Extract a normalized Local Binary Pattern histogram."""
+    """Extract a normalized Local Binary Pattern histogram. (Chương 3)"""
     lbp = local_binary_pattern(
         image,
         P=LBP_POINTS,
@@ -84,12 +87,20 @@ def extract_lbp(image):
 
 
 def extract_glcm(image):
-    """Extract Gray Level Co-occurrence Matrix statistics across angles."""
+    """Extract Gray Level Co-occurrence Matrix statistics. (Chương 4)
+    
+    Quantize image từ 256 → 64 levels trước khi tính GLCM.
+    Lý do: Ma trận GLCM với levels=256 có kích thước 256x256 → rất chậm.
+           Giảm xuống 64 levels tăng tốc ~16x, độ chính xác không đổi đáng kể.
+    """
+    # Lượng tử hóa: 256 mức → 64 mức (chia 4)
+    image_q = (image // 4).astype(np.uint8)
+
     glcm = graycomatrix(
-        image,
+        image_q,
         distances=[1],
         angles=[0, np.pi / 4, np.pi / 2, 3 * np.pi / 4],
-        levels=256,
+        levels=GLCM_LEVELS,
         symmetric=True,
         normed=True,
     )
@@ -116,6 +127,7 @@ def extract_features_from_image(image_path):
         print(f"[WARNING] Cannot read image: {image_path}")
         return None
 
+    # Ảnh từ processed đã là 224x224, resize là safety check
     image = cv2.resize(image, IMG_SIZE).astype(np.uint8)
 
     feature_vector = np.concatenate(

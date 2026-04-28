@@ -83,7 +83,9 @@ def process_dataset():
             if not category_path.exists():
                 continue
             
-            image_files = list(category_path.glob("*.jpeg")) + list(category_path.glob("*.jpg"))
+            image_files = (list(category_path.glob("*.jpeg")) + 
+               list(category_path.glob("*.jpg")) + 
+               list(category_path.glob("*.png")))
             
             print(f"\n  [DATA] {category}: Processing {len(image_files)} images...")
             
