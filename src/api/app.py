@@ -78,6 +78,27 @@ def extract_glcm(image):
         features.extend(graycoprops(glcm, prop).flatten())
     return np.asarray(features, dtype=np.float32)
 
+def is_valid_xray(image_bytes):
+    """Kiểm tra ảnh có khả năng là X-ray không"""
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        return False, "Không đọc được ảnh"
+
+    # 1. Kiểm tra grayscale (X-ray gần như không có màu)
+    b, g, r = cv2.split(image)
+    rg_diff = np.mean(np.abs(r.astype(int) - g.astype(int)))
+    rb_diff = np.mean(np.abs(r.astype(int) - b.astype(int)))
+    if rg_diff > 20 or rb_diff > 20:
+        return False, "Ảnh có màu sắc — không phải X-ray phổi"
+
+    # 2. Kiểm tra độ sáng trung bình (X-ray thường tối, mean thấp)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    mean_brightness = np.mean(gray)
+    if mean_brightness > 180:
+        return False, "Ảnh quá sáng — không phải X-ray phổi"
+
+    return True, "OK"
 
 def preprocess_image(image_bytes):
     """Đọc ảnh từ bytes, tiền xử lý và trích xuất features"""
@@ -125,6 +146,10 @@ def predict():
     try:
         image_bytes = file.read()
 
+        valid, reason = is_valid_xray(image_bytes)
+        if not valid:
+            return jsonify({"error": f"Ảnh không hợp lệ: {reason}"}), 400
+
         # Trích xuất features
         features = preprocess_image(image_bytes)
         if features is None:
@@ -142,6 +167,12 @@ def predict():
 
         rf_pred     = int(rf.predict(features_pca)[0])
         rf_prob     = rf.predict_proba(features_pca)[0].tolist()
+
+        CONFIDENCE_THRESHOLD = 0.55
+        if max(svm_prob) < CONFIDENCE_THRESHOLD and max(rf_prob) < CONFIDENCE_THRESHOLD:
+            return jsonify({
+                "error": "Độ tin cậy quá thấp — ảnh không phải X-ray phổi hợp lệ"
+            }), 400
 
         # Trả về base64 ảnh để hiển thị trên UI
         img_base64 = base64.b64encode(image_bytes).decode("utf-8")
