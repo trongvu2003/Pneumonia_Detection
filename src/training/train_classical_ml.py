@@ -20,7 +20,7 @@ from sklearn.metrics import (
 )
 import joblib
 
-# Paths─────────────────────────────────────────────────────────
+# Paths
 BASE_DIR     = Path(__file__).resolve().parents[2]
 FEATURE_PATH = BASE_DIR / "data" / "features"
 MODELS_PATH  = BASE_DIR / "models"

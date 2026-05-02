@@ -43,10 +43,10 @@ IMG_SIZE = (224, 224)
 CLASS_TO_LABEL = {"NORMAL": 0, "PNEUMONIA": 1}
 IMAGE_EXTENSIONS = ("*.jpeg", "*.jpg", "*.png")
 
-LBP_POINTS = 8
-LBP_RADIUS = 1
+LBP_POINTS = 8  # (các điểm lân cận trong LBP)
+LBP_RADIUS = 1 # (bán kính cho LBP)
 
-#  Số mức lượng tử cho GLCM (giảm từ 256 → 64, nhanh hơn ~16x)
+#  Số mức lượng tử cho GLCM (giảm từ 256 → 64, nhanh hơn )
 GLCM_LEVELS = 64
 
 
@@ -54,22 +54,22 @@ def create_feature_directory():
     FEATURE_PATH.mkdir(parents=True, exist_ok=True)
     print(f"[OK] Feature folder ready: {FEATURE_PATH}")
 
-
+# Tìm biên,Hướng độ sáng thay đổi (Histogram of Oriented Gradients)
 def extract_hog(image):
-    """Extract Histogram of Oriented Gradients features. (Chương 3)"""
+    """Extract Histogram of Oriented Gradients features."""
     features = hog(
         image,
-        orientations=9,
+        orientations=9, # Số hướng gradient 
         pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2),
-        block_norm="L2-Hys",
+        cells_per_block=(2, 2), 
+        block_norm="L2-Hys", 
         feature_vector=True,
     )
     return features.astype(np.float32)
 
-
+# So sánh pixel trung tâm với pixel xung quanh, tạo thành mã nhị phân (Local Binary Pattern)
 def extract_lbp(image):
-    """Extract a normalized Local Binary Pattern histogram. (Chương 3)"""
+    """Extract a normalized Local Binary Pattern histogram"""
     lbp = local_binary_pattern(
         image,
         P=LBP_POINTS,
@@ -85,9 +85,9 @@ def extract_lbp(image):
     hist /= hist.sum() + 1e-6
     return hist
 
-
+# Đếm tần suất pixel xuất hiện cùng nhau(Gray Level Co-occurrence Matrix)
 def extract_glcm(image):
-    """Extract Gray Level Co-occurrence Matrix statistics. (Chương 4)
+    """Extract Gray Level Co-occurrence Matrix statistics. 
     
     Quantize image từ 256 → 64 levels trước khi tính GLCM.
     Lý do: Ma trận GLCM với levels=256 có kích thước 256x256 → rất chậm.

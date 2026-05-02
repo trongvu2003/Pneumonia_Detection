@@ -29,10 +29,10 @@ def create_directories():
     print(f"[OK] Created output directories in {PROCESSED_DATA_PATH}")
 
 def preprocess_single_image(image_path):
-    # Chỉ thực hiện Tiền xử lý ảnh (Làm sạch và tăng cường)
+    # Tiền xử lý ảnh (Làm sạch và tăng cường)
     try:
         # 1. Đọc ảnh
-        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE) #Chỉ giữ 1 kênh (đen trắng)-> giảm chiều dữ liệu → train nhanh hơn
         if image is None:
             print(f"Warning: Could not read {image_path}")
             return None
