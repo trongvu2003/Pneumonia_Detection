@@ -252,7 +252,6 @@ def main():
     summary = pd.DataFrame(
         [{k: v for k, v in r.items() if k != "cm"} for r in all_results]
     )
-    summary.to_csv(MODELS_PATH / "classical_ml_results.csv", index=False)
 
     print("\n" + "=" * 70)
     print("FINAL SUMMARY — TEST SET")
@@ -270,7 +269,6 @@ def main():
         "rf_model.pkl",
         "scaler.pkl",
         "pca.pkl",
-        "classical_ml_results.csv",
         "classical_ml_confusion_matrices.png",
         "classical_ml_comparison.png",
     ]:
