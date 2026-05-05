@@ -2,9 +2,9 @@
 Pneumonia Detection - Feature Extraction Pipeline.
 
 Extract handcrafted features from preprocessed X-ray images:
-- HOG  : edge and shape cues          (Chương 3)
-- LBP  : local texture histogram      (Chương 3)
-- GLCM : statistical texture descriptors (Chương 4)
+- HOG  : edge and shape cues
+- LBP  : local texture histogram
+- GLCM : statistical texture descriptors
 
 Outputs are stored in ``data/features``:
 - X_train.npy, y_train.npy
@@ -23,16 +23,13 @@ from tqdm import tqdm
 try:
     from skimage.feature import graycomatrix, graycoprops, hog, local_binary_pattern
 except ImportError as exc:
-    raise ImportError(
-        "Missing dependency 'scikit-image'. Install it before running feature extraction."
-    ) from exc
+    raise ImportError("Missing dependency 'scikit-image'.") from exc
 
 try:
     from sklearn.utils import shuffle
+    from sklearn.preprocessing import normalize
 except ImportError as exc:
-    raise ImportError(
-        "Missing dependency 'scikit-learn'. Install it before running feature extraction."
-    ) from exc
+    raise ImportError("Missing dependency 'scikit-learn'.") from exc
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -43,10 +40,10 @@ IMG_SIZE = (224, 224)
 CLASS_TO_LABEL = {"NORMAL": 0, "PNEUMONIA": 1}
 IMAGE_EXTENSIONS = ("*.jpeg", "*.jpg", "*.png")
 
-LBP_POINTS = 8  # (các điểm lân cận trong LBP)
-LBP_RADIUS = 1 # (bán kính cho LBP)
+# LBP: tăng radius+points để capture vùng texture rộng hơn
+LBP_POINTS = 24
+LBP_RADIUS = 3
 
-#  Số mức lượng tử cho GLCM (giảm từ 256 → 64, nhanh hơn )
 GLCM_LEVELS = 64
 
 
@@ -54,98 +51,136 @@ def create_feature_directory():
     FEATURE_PATH.mkdir(parents=True, exist_ok=True)
     print(f"[OK] Feature folder ready: {FEATURE_PATH}")
 
-# Tìm biên,Hướng độ sáng thay đổi (Histogram of Oriented Gradients)
+
+# HOG
 def extract_hog(image):
-    """Extract Histogram of Oriented Gradients features."""
+    """
+    pixels_per_cell (8,8)→(16,16):
+      - (8,8) trên 224x224 tạo ra 27x27x2x2x9 ≈ 34K features → quá nhiều
+      - (16,16) tạo ra 13x13x2x2x9 ≈ 9K features → vừa đủ, ít noise hơn
+    """
     features = hog(
         image,
-        orientations=9, # Số hướng gradient 
-        pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2), 
-        block_norm="L2-Hys", 
+        orientations=9,
+        pixels_per_cell=(16, 16),
+        cells_per_block=(2, 2),
+        block_norm="L2-Hys",
         feature_vector=True,
     )
     return features.astype(np.float32)
 
-# So sánh pixel trung tâm với pixel xung quanh, tạo thành mã nhị phân (Local Binary Pattern)
+
+#  LBP
 def extract_lbp(image):
-    """Extract a normalized Local Binary Pattern histogram"""
-    lbp = local_binary_pattern(
-        image,
-        P=LBP_POINTS,
-        R=LBP_RADIUS,
-        method="uniform",
-    )
-    hist, _ = np.histogram(
-        lbp.ravel(),
-        bins=np.arange(0, LBP_POINTS + 3),
-        range=(0, LBP_POINTS + 2),
-    )
-    hist = hist.astype(np.float32)
-    hist /= hist.sum() + 1e-6
-    return hist
-
-# Đếm tần suất pixel xuất hiện cùng nhau(Gray Level Co-occurrence Matrix)
-def extract_glcm(image):
-    """Extract Gray Level Co-occurrence Matrix statistics. 
-    
-    Quantize image từ 256 → 64 levels trước khi tính GLCM.
-    Lý do: Ma trận GLCM với levels=256 có kích thước 256x256 → rất chậm.
-           Giảm xuống 64 levels tăng tốc ~16x, độ chính xác không đổi đáng kể.
     """
-    # Lượng tử hóa: 256 mức → 64 mức (chia 4)
-    image_q = (image // 4).astype(np.uint8)
+    Tăng P=24, R=3 để capture cấu trúc texture phổi ở vùng rộng hơn.
+    Phổi có texture coarse → radius nhỏ (R=1) bỏ qua nhiều thông tin.
+    Multi-scale: kết hợp R=1 và R=3 để có cả fine và coarse texture.
+    """
+    hists = []
+    for r, p in [(1, 8), (3, 24)]:  # ← multi-scale LBP
+        lbp = local_binary_pattern(image, P=p, R=r, method="uniform")
+        hist, _ = np.histogram(
+            lbp.ravel(),
+            bins=np.arange(0, p + 3),
+            range=(0, p + 2),
+        )
+        hist = hist.astype(np.float32)
+        hist /= hist.sum() + 1e-6
+        hists.append(hist)
+    return np.concatenate(hists)
 
+
+# GLCM
+def extract_glcm(image):
+    """
+    Thêm distances=[1,3] để capture cả texture gần và xa.
+    Phổi bình thường vs viêm phổi có sự khác biệt rõ ở distance lớn hơn.
+    """
+    image_q = (image // 4).astype(np.uint8)
     glcm = graycomatrix(
         image_q,
-        distances=[1],
+        distances=[1, 3],
         angles=[0, np.pi / 4, np.pi / 2, 3 * np.pi / 4],
         levels=GLCM_LEVELS,
         symmetric=True,
         normed=True,
     )
-
     features = []
-    for prop in ("contrast", "energy", "homogeneity", "correlation"):
+    for prop in ("contrast", "energy", "homogeneity", "correlation", "dissimilarity"):
         values = graycoprops(glcm, prop).flatten()
         features.extend(values)
-
     return np.asarray(features, dtype=np.float32)
 
 
-def list_image_files(class_path):
-    image_files = []
-    for pattern in IMAGE_EXTENSIONS:
-        image_files.extend(class_path.glob(pattern))
-    return sorted(image_files)
+# Gabor
+def extract_gabor(image):
+    """
+    Gabor filter capture texture ở nhiều tần số và hướng khác nhau.
+    Rất hiệu quả cho ảnh y tế — phổi viêm có texture pattern khác biệt.
+    """
+    features = []
+    # 4 tần số × 4 hướng = 16 filters
+    for frequency in [0.1, 0.2, 0.3, 0.4]:
+        for theta in [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]:
+            kernel = cv2.getGaborKernel(
+                ksize=(21, 21),
+                sigma=4.0,
+                theta=theta,
+                lambd=1.0 / frequency,
+                gamma=0.5,
+                psi=0,
+                ktype=cv2.CV_32F,
+            )
+            filtered = cv2.filter2D(image.astype(np.float32), -1, kernel)
+            # Mean + std của response → 2 values per filter
+            features.extend([filtered.mean(), filtered.std()])
+    return np.asarray(features, dtype=np.float32)  # 16 × 2 = 32 features
 
 
+# Combine + normalize riêng từng group
 def extract_features_from_image(image_path):
-    """Extract a combined feature vector from one grayscale image."""
+    """
+    KEY FIX: normalize từng feature group về unit norm riêng
+    trước khi concatenate → HOG (9K) không áp đảo GLCM (40) và LBP (36).
+    """
     image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"[WARNING] Cannot read image: {image_path}")
         return None
 
-    # Ảnh từ processed đã là 224x224, resize là safety check
     image = cv2.resize(image, IMG_SIZE).astype(np.uint8)
 
+    hog_feat = extract_hog(image)
+    lbp_feat = extract_lbp(image)
+    glcm_feat = extract_glcm(image)
+    gabor_feat = extract_gabor(image)
+
+    # Normalize từng group riêng về L2 unit norm ← KEY FIX
+    def l2_norm(x):
+        norm = np.linalg.norm(x)
+        return x / (norm + 1e-8)
+
     feature_vector = np.concatenate(
-        [extract_hog(image), extract_lbp(image), extract_glcm(image)]
+        [
+            l2_norm(hog_feat),
+            l2_norm(lbp_feat),
+            l2_norm(glcm_feat),
+            l2_norm(gabor_feat),
+        ]
     )
     return feature_vector.astype(np.float32)
 
 
+# Process split
 def process_split(split_name):
-    """Process one dataset split and return features, labels, and stats."""
     split_path = PROCESSED_PATH / split_name
     if not split_path.exists():
         raise FileNotFoundError(f"Missing split folder: {split_path}")
 
     print(f"\n[PROCESSING] {split_name.upper()}")
 
-    X = []
-    y = []
+    X, y = [], []
     stats = {
         "split": split_name,
         "samples": 0,
@@ -161,25 +196,28 @@ def process_split(split_name):
             print(f"[WARNING] Missing folder: {class_path}")
             continue
 
-        image_files = list_image_files(class_path)
+        image_files = []
+        for pattern in IMAGE_EXTENSIONS:
+            image_files.extend(class_path.glob(pattern))
+        image_files = sorted(image_files)
         print(f"  {class_name}: {len(image_files)} images")
 
-        for image_path in tqdm(image_files, desc=f"{split_name}:{class_name}", leave=False):
-            feature_vector = extract_features_from_image(image_path)
-            if feature_vector is None:
+        for image_path in tqdm(
+            image_files, desc=f"{split_name}:{class_name}", leave=False
+        ):
+            fv = extract_features_from_image(image_path)
+            if fv is None:
                 stats["failed_images"] += 1
                 continue
-
-            X.append(feature_vector)
+            X.append(fv)
             y.append(label)
-
             if class_name == "NORMAL":
                 stats["normal_count"] += 1
             else:
                 stats["pneumonia_count"] += 1
 
     if not X:
-        raise ValueError(f"No valid images were processed for split '{split_name}'.")
+        raise ValueError(f"No valid images processed for split '{split_name}'.")
 
     X = np.asarray(X, dtype=np.float32)
     y = np.asarray(y, dtype=np.int32)
@@ -189,6 +227,12 @@ def process_split(split_name):
     stats["feature_dim"] = int(X.shape[1])
 
     print(f"[INFO] {split_name} shape: {X.shape}")
+    print(
+        f"[INFO] Feature breakdown — HOG: ~{len(extract_hog(np.zeros(IMG_SIZE, np.uint8)))} | "
+        f"LBP: ~{len(extract_lbp(np.zeros(IMG_SIZE, np.uint8)))} | "
+        f"GLCM: ~{len(extract_glcm(np.zeros(IMG_SIZE, np.uint8)))} | "
+        f"Gabor: 32"
+    )
     return X, y, stats
 
 
@@ -206,7 +250,8 @@ def save_summary(summary_rows):
 
 def main():
     print("=" * 60)
-    print("TASK 2 - FEATURE EXTRACTION")
+    print("TASK 2 - FEATURE EXTRACTION (IMPROVED)")
+    print("HOG(16x16) + Multi-scale LBP + GLCM(d=1,3) + Gabor")
     print("=" * 60)
 
     create_feature_directory()
