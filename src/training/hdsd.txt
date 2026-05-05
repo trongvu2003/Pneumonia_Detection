@@ -1,2 +1,0 @@
-gọi preprocessing pipeline
-train model
